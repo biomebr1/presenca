@@ -1,1 +1,36 @@
+// Captura o IP antes de tudo
+let userIP = "Não identificado";
+fetch('https://api.ipify.org?format=json')
+    .then(r => r.json())
+    .then(d => userIP = d.ip);
 
+document.getElementById('btnSend').onclick = function() {
+    this.innerText = "ENVIANDO...";
+    this.disabled = true;
+
+    // Gera o horário com Dia da Semana (Ex: Segunda-feira, 05/03/2026)
+    const agora = new Date().toLocaleString("pt-BR", {
+        timeZone: "America/Sao_Paulo",
+        weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric',
+        hour: '2-digit', minute: '2-digit', second: '2-digit'
+    });
+
+    const dadosEnvio = {
+        cpf_user: document.getElementById('cpfIn').value,
+        codigo_validacao: document.getElementById('codIn').value,
+        horario_registro: agora.charAt(0).toUpperCase() + agora.slice(1),
+        ip_address: userIP,
+        foto_facial: fotoBase64 // A foto capturada na hora
+    };
+
+    emailjs.send("registrodepresencabiome", "template_biomevalida", dadosEnvio)
+        .then(() => { 
+            alert("Protocolo Biomë enviado com sucesso!"); 
+            location.reload(); 
+        })
+        .catch(err => {
+            alert("Erro ao enviar. Verifique sua conexão.");
+            this.innerText = "TENTAR NOVAMENTE";
+            this.disabled = false;
+        });
+};
