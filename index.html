@@ -3,30 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Biomë - Reconhecimento Facial</title>
+    <title>Biomë - Biometria</title>
     <style>
-        body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background: #fff; margin: 0; padding: 20px; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
-        .box { width: 100%; max-width: 340px; border: 2px solid #000; padding: 30px; box-sizing: border-box; text-align: center; }
-        .logo { width: 140px; margin-bottom: 25px; }
-        #btnAuth { width: 100%; padding: 18px; background: #000; color: #fff; border: none; font-size: 11px; font-weight: bold; cursor: pointer; text-transform: uppercase; letter-spacing: 2px; }
-        #btnAuth:disabled { background: #f0f0f0; color: #aaa; cursor: wait; }
+        body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background: #fff; margin: 0; padding: 15px; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+        .box { width: 100%; max-width: 340px; border: 2px solid #000; padding: 35px; box-sizing: border-box; text-align: center; }
+        .logo { width: 130px; margin-bottom: 30px; }
+        #btnAuth { width: 100%; padding: 20px; background: #000; color: #fff; border: none; font-size: 11px; font-weight: bold; cursor: pointer; text-transform: uppercase; letter-spacing: 2px; transition: 0.3s; }
+        #btnAuth:disabled { background: #f4f4f4; color: #ccc; cursor: wait; border: 1px solid #eee; }
         #modalAuth { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #fff; z-index: 999; flex-direction: column; align-items: center; justify-content: center; }
-        .camera-circle { width: 280px; height: 280px; border-radius: 50%; overflow: hidden; border: 3px solid #000; }
+        .camera-circle { width: 280px; height: 280px; border-radius: 50%; overflow: hidden; border: 3px solid #000; box-shadow: 0 0 20px rgba(0,0,0,0.1); }
         video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
-        #formFinal { display: none; text-align: left; margin-top: 20px; }
-        input { width: 100%; padding: 12px; border: 1px solid #eee; margin-bottom: 15px; box-sizing: border-box; font-weight: bold; }
+        #formFinal { display: none; text-align: left; margin-top: 25px; }
+        label { font-size: 9px; font-weight: bold; text-transform: uppercase; display: block; margin-bottom: 5px; }
+        input { width: 100%; padding: 12px; border: 1px solid #eee; margin-bottom: 15px; box-sizing: border-box; font-weight: bold; font-size: 14px; }
+        #loadingMsg { font-size: 9px; margin-top: 10px; color: #999; text-transform: uppercase; letter-spacing: 1px; }
     </style>
 </head>
 <body>
 
 <div class="box">
     <img src="https://static.wixstatic.com/media/91c4dc_49e4dd5b81744b3ca1719865d36d4363~mv2.png" class="logo">
-    <button type="button" id="btnAuth" disabled>Sincronizando Banco de Dados...</button>
+    <button type="button" id="btnAuth" disabled>Sincronizando Banco...</button>
+    <div id="loadingMsg">Carregando modelos de IA...</div>
 
     <div id="formFinal">
-        <label style="font-size: 9px; font-weight: bold;">IDENTIFICADO:</label>
+        <label>Identificado</label>
         <input type="text" id="cpfIn" readonly>
-        <label style="font-size: 9px; font-weight: bold;">CÓDIGO INTERNO:</label>
+        <label>Código Interno</label>
         <input type="text" id="codIn" placeholder="Digite seu código">
         <button id="btnSend" style="width:100%; padding:18px; background:#000; color:#fff; border:none; font-weight:bold; cursor:pointer;">CONFIRMAR PRESENÇA</button>
     </div>
@@ -34,7 +37,7 @@
 
 <div id="modalAuth">
     <div class="camera-circle"><video id="video" autoplay playsinline muted></video></div>
-    <div style="margin-top:20px; font-size:10px; font-weight:bold; letter-spacing:2px;">ANALISANDO BIOMETRIA...</div>
+    <div style="margin-top:25px; font-size:10px; font-weight:bold; letter-spacing:2px;">POSICIONE O ROSTO</div>
 </div>
 
 <canvas id="canvas" style="display:none;"></canvas>
@@ -46,32 +49,49 @@
     (function(){ emailjs.init("zM58bekmRlBuBZsGD"); })();
 
     const btnAuth = document.getElementById('btnAuth');
+    const loadingMsg = document.getElementById('loadingMsg');
     const dbCPFs = ["13192978970", "07807443901", "07114646933", "13778936930"];
     let faceMatcher = null;
     let fotoBase64 = "";
 
     async function iniciar() {
         try {
-            // Modelos estáveis
+            // 1. Carregar Modelos
+            loadingMsg.innerText = "Conectando ao motor neural...";
             const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
             await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
             await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
             await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
 
+            // 2. Carregar Fotos de Referência
             const descriptors = [];
             for (const cpf of dbCPFs) {
-                // Carregamento forçando CrossOrigin para o GitHub Pages não bloquear
-                const img = await faceapi.fetchImage(`${cpf}.jpg`);
-                const det = await faceapi.detectSingleFace(img, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
-                if (det) descriptors.push(new faceapi.LabeledFaceDescriptors(cpf, [det.descriptor]));
+                loadingMsg.innerText = `Analisando base: ${cpf}...`;
+                try {
+                    // Carregamento via proxy de imagem para evitar travamentos
+                    const img = await faceapi.fetchImage(`${cpf}.jpg`);
+                    const det = await faceapi.detectSingleFace(img, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
+                    if (det) {
+                        descriptors.push(new faceapi.LabeledFaceDescriptors(cpf, [det.descriptor]));
+                    }
+                } catch (e) {
+                    console.error("Erro na foto:", cpf);
+                }
             }
 
-            faceMatcher = new faceapi.FaceMatcher(descriptors, 0.6);
-            btnAuth.innerText = "INICIAR BIOMETRIA";
-            btnAuth.disabled = false;
+            if (descriptors.length > 0) {
+                faceMatcher = new faceapi.FaceMatcher(descriptors, 0.6);
+                btnAuth.innerText = "INICIAR BIOMETRIA";
+                btnAuth.disabled = false;
+                loadingMsg.innerText = "Sistema Biomë Pronto";
+            } else {
+                throw new Error("Falha nas fotos");
+            }
+
         } catch (e) {
-            btnAuth.innerText = "ERRO: VERIFIQUE AS FOTOS (.jpg)";
+            btnAuth.innerText = "ERRO NA SINCRONIZAÇÃO";
             btnAuth.style.background = "#ff4d4d";
+            loadingMsg.innerText = "Verifique a conexão e as fotos .jpg";
         }
     }
 
@@ -81,20 +101,23 @@
         document.getElementById('video').srcObject = stream;
 
         const loop = setInterval(async () => {
-            const det = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
+            const videoEl = document.getElementById('video');
+            const det = await faceapi.detectSingleFace(videoEl, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
+            
             if (det) {
                 const match = faceMatcher.findBestMatch(det.descriptor);
                 if (match.label !== 'unknown') {
                     clearInterval(loop);
                     const canvas = document.getElementById('canvas');
-                    canvas.width = 300; canvas.height = 300;
-                    canvas.getContext('2d').drawImage(video, 0, 0, 300, 300);
-                    fotoBase64 = canvas.toDataURL('image/jpeg', 0.5);
+                    canvas.width = 400; canvas.height = 400;
+                    canvas.getContext('2d').drawImage(videoEl, 0, 0, 400, 400);
+                    fotoBase64 = canvas.toDataURL('image/jpeg', 0.6);
 
                     document.getElementById('cpfIn').value = match.label.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
                     document.getElementById('modalAuth').style.display = 'none';
                     document.getElementById('formFinal').style.display = 'block';
                     btnAuth.style.display = 'none';
+                    loadingMsg.style.display = 'none';
                     stream.getTracks().forEach(t => t.stop());
                 }
             }
@@ -102,12 +125,22 @@
     };
 
     document.getElementById('btnSend').onclick = function() {
+        this.innerText = "ENVIANDO...";
+        this.disabled = true;
+        
         emailjs.send("registrodepresencabiome", "template_biomevalida", {
             cpf_user: document.getElementById('cpfIn').value,
             codigo_validacao: document.getElementById('codIn').value,
             horario_registro: new Date().toLocaleString("pt-BR"),
             foto_facial: fotoBase64
-        }).then(() => { alert("Enviado com sucesso!"); location.reload(); });
+        }).then(() => { 
+            alert("Presença Registrada com Sucesso!"); 
+            location.reload(); 
+        }).catch(() => {
+            alert("Erro no envio.");
+            this.innerText = "TENTAR NOVAMENTE";
+            this.disabled = false;
+        });
     };
 
     iniciar();
