@@ -97,37 +97,59 @@
     let faceMatcher = null;
     let generatedCode = "";
     let fotoFinal = "";
+async function init() {
+        const btn = document.getElementById('btnStart');
+        try {
+            // Usando modelos comprimidos e estáveis via JSDelivr
+            const MODEL_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights';
+            
+            await Promise.all([
+                faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+                faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+                faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+            ]);
 
-    // 1. Relógio e Data em Tempo Real
-    function atualizarRelogio() {
-        const agora = new Date();
-        const optionsData = { weekday: 'long', year: 'numeric', month: '2-digit', day: '2-digit' };
-        document.getElementById('displayData').innerText = agora.toLocaleDateString('pt-BR', optionsData);
-        document.getElementById('displayHora').innerText = agora.toLocaleTimeString('pt-BR');
+            const descriptors = [];
+            for (const cpf in fotosBase64) {
+                // Verifica se você colou o código e se ele começa corretamente
+                if(fotosBase64[cpf].startsWith("data:image")) {
+                    try {
+                        const img = await faceapi.fetchImage(fotosBase64[cpf]);
+                        const det = await faceapi.detectSingleFace(img, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
+                        if (det) {
+                            descriptors.push(new faceapi.LabeledFaceDescriptors(cpf, [det.descriptor]));
+                        }
+                    } catch (fErr) {
+                        console.warn("Erro ao processar foto do CPF: " + cpf);
+                    }
+                }
+            }
+
+            if (descriptors.length === 0) {
+                btn.innerText = "ERRO: COLE AS FOTOS BASE64";
+                btn.style.background = "#e74c3c";
+                return;
+            }
+
+            faceMatcher = new faceapi.FaceMatcher(descriptors, 0.6);
+            generateCode();
+            btn.innerText = "Validar Código para Iniciar";
+            
+            // Ativador do campo de código
+            document.getElementById('userInputCode').addEventListener('input', function() {
+                if(this.value === generatedCode) {
+                    btn.disabled = false;
+                    btn.classList.add('btn-active');
+                    btn.innerText = "Iniciar Reconhecimento";
+                }
+            });
+
+        } catch (err) {
+            btn.innerText = "ERRO DE CONEXÃO COM O MOTOR";
+            btn.style.background = "#e74c3c";
+            console.error("Erro detalhado:", err);
+        }
     }
-    setInterval(atualizarRelogio, 1000);
-
-    // 2. Gerar Código Aleatório
-    function generateCode() {
-        generatedCode = Math.floor(1000 + Math.random() * 9000).toString();
-        document.getElementById('randomCodeDisplay').innerText = generatedCode;
-    }
-
-    // 3. Buscar IP
-    fetch('https://api.ipify.org?format=json').then(r => r.json()).then(d => {
-        document.getElementById('displayIP').innerText = d.ip;
-    });
-
-    // 4. Iniciar IA e Validar Código
-    async function init() {
-        const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
-        await Promise.all([
-            faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-            faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
-            faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
-        ]);
-
-        const descriptors = [];
         for (const cpf in fotosBase64) {
             if(fotosBase64[cpf].length > 100) {
                 const img = await faceapi.fetchImage(fotosBase64[cpf]);
